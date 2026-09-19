@@ -1,0 +1,48 @@
+{
+  "name": "agent-attest",
+  "version": "0.1.0",
+  "description": "Signed chain-of-custody attestations for AI coding agent work, with a CI gate on protected paths.",
+  "type": "module",
+  "license": "MIT",
+  "author": "agent-attest contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-attest/agent-attest"
+  },
+  "bugs": "https://github.com/agent-attest/agent-attest/issues",
+  "keywords": [
+    "in-toto",
+    "attestation",
+    "provenance",
+    "supply-chain",
+    "ai-agents",
+    "ci",
+    "ed25519",
+    "compliance"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "agent-attest": "bin/agent-attest.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node run-tests.mjs",
+    "demo": "node scripts/demo.mjs"
+  },
+  "dependencies": {
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.5.0"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE",
+    "agent-attest.yaml"
+  ]
+}

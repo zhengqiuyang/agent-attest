@@ -1,0 +1,5 @@
+# agent-attest gate configuration (dogfooded on this repo)
+protectedPaths:
+  - "src/**"
+requireVerificationPassed: true
+allowOverrideTrailer: true
