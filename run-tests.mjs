@@ -33,8 +33,17 @@ if (files.length === 0) {
 console.log(`run-tests: ${files.length} test file(s):`);
 for (const f of files) console.log(`  ${f}`);
 
+// CI runners inject GITHUB_EVENT_PATH / GITHUB_TOKEN into every step; tests
+// must exercise the no-source and no-token paths, so strip them (found on the
+// first CI run: the runner's push-event payload flipped a gate error-path
+// test into the Actions branch).
+for (const k of ["GITHUB_EVENT_PATH", "GITHUB_TOKEN", "GH_TOKEN", "AGENT_ATTEST_PRIVATE_KEY", "AGENT_ATTEST_PUBLIC_KEY"]) {
+  delete process.env[k];
+}
+
 const result = spawnSync(process.execPath, ["--test", ...files], {
   stdio: "inherit",
   windowsHide: true,
+  env: process.env,
 });
 process.exit(result.status ?? 1);
