@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { basename, resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -6,6 +6,7 @@ import {
   createAttestation,
   verifyAll,
 } from "./attest.js";
+import { buildChangelog, formatChangelogJson, formatChangelogMarkdown } from "./changelog.js";
 import {
   CommitSource,
   FetchLike,
@@ -19,7 +20,7 @@ import { keygen } from "./keys.js";
 import { buildReport, formatReportMarkdown } from "./report.js";
 import { errorMessage, readTextNormalized, toPosix } from "./util.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const USAGE = `agent-attest v${VERSION} — signed chain-of-custody for AI coding agent work
 
@@ -27,11 +28,12 @@ Usage:
   agent-attest <command> [options]
 
 Commands:
-  keygen   Generate an ed25519 signing keypair (default .agent-attest/keys)
-  create   Create and sign an attestation for one commit
-  verify   Verify attestations against git history (optionally re-run verification)
-  gate     Block unattested commits touching protected paths (CI gate)
-  report   Compliance inventory across all attestations
+  keygen    Generate an ed25519 signing keypair (default .agent-attest/keys)
+  create    Create and sign an attestation for one commit
+  verify    Verify attestations against git history (optionally re-run verification)
+  gate      Block unattested commits touching protected paths (CI gate)
+  report    Compliance inventory across all attestations
+  changelog Deterministic changelog/release notes: git history joined with attestations
 
 Exit codes: 0 pass · 1 findings / invalid attestations · 2 usage or config error
 
@@ -108,6 +110,32 @@ Exit: 0 pass (overrides are warnings, still listed) · 1 findings · 2 config/us
 Compliance inventory across all attestations: per-commit agent, verification
 result and source, run duration, signature validity, with totals. Markdown for
 humans, JSON for GRC tooling.`,
+
+  changelog: `Usage: agent-attest changelog [--range <base>..<head>] [--format markdown|json] [--md-out <file>] [--include-unknown]
+
+Deterministic changelog / release notes from git history JOINed with
+attestations. No LLM, no network, no timestamps — same input, same output.
+
+Range (default when --range is absent):
+  most recent tag..HEAD   when a tag exists (git describe --abbrev=0)
+  last 30 commits         when the repository has no tags
+
+Each commit is classified:
+  agent    an attestation exists (agent name, verification result and source,
+           signature validity reported — never assumed)
+  human    no attestation, no agent trailer
+  unknown  no attestation but a Co-Authored-By: Claude/Codex/Gemini/Copilot
+           trailer (unattested agent work — always listed under a warning
+           heading; --include-unknown keeps the list but drops the warning)
+
+Entries group by conventional-commit prefix (feat!/feat -> Features,
+fix -> Fixes, rest -> Changes), oldest first. Agent entries are annotated:
+  - add tokens [agent: claude-code, tests: passed]   (or tests: FAILED /
+   tests: unverified, plus source: claimed / signature: INVALID when true)
+
+The header carries a summary and a trust line (attestation coverage).
+--md-out <file> writes the markdown to a file instead of stdout.
+--format json emits the full entry objects for tooling.`,
 };
 
 interface ParsedInvocation {
@@ -122,6 +150,10 @@ function parseArgs(argv: string[]): ParsedInvocation {
   let command: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
+    if (a === "-h") {
+      flags.h = true;
+      continue;
+    }
     if (a.startsWith("--") && a.length > 2) {
       const body = a.slice(2);
       const eq = body.indexOf("=");
@@ -180,13 +212,13 @@ export async function main(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv);
   const command = parsed.command;
 
+  if (parsed.flags.help !== undefined || parsed.flags.h !== undefined) {
+    writeOut((command !== null ? COMMAND_USAGE[command] ?? USAGE : USAGE) + "\n");
+    return 0;
+  }
   if (command === null) {
     writeOut(USAGE + "\n");
     return 2;
-  }
-  if (parsed.flags.help !== undefined || parsed.flags.h !== undefined) {
-    writeOut((COMMAND_USAGE[command] ?? USAGE) + "\n");
-    return 0;
   }
   if (command === "help") {
     writeOut(USAGE + "\n");
@@ -211,6 +243,8 @@ export async function main(argv: string[]): Promise<number> {
         return await cmdGate(parsed.flags);
       case "report":
         return await cmdReport(parsed.flags);
+      case "changelog":
+        return await cmdChangelog(parsed.flags);
       default:
         writeErr(`agent-attest: unknown command "${command}"\n\n${USAGE}\n`);
         return 2;
@@ -446,6 +480,40 @@ async function cmdReport(flags: Record<string, string | boolean>): Promise<numbe
     );
   } else {
     writeOut(formatReportMarkdown(root, report) + "\n");
+  }
+  return 0;
+}
+
+async function cmdChangelog(flags: Record<string, string | boolean>): Promise<number> {
+  const format = strFlag(flags, "format") ?? "markdown";
+  if (format !== "markdown" && format !== "json") {
+    throw new Error(`--format must be markdown|json, got "${format}"`);
+  }
+  const range = strFlag(flags, "range");
+  const mdOutFlag = flags["md-out"];
+  if (mdOutFlag !== undefined && format !== "markdown") {
+    throw new Error(`--md-out requires --format markdown, got "${format}"`);
+  }
+  const mdOut = typeof mdOutFlag === "string" && mdOutFlag.length > 0 ? mdOutFlag : undefined;
+  if (mdOutFlag !== undefined && mdOut === undefined) {
+    throw new Error("--md-out requires a file path: --md-out <file>");
+  }
+  const includeUnknown = flags["include-unknown"] === true;
+  if (mdOut !== undefined && format !== "markdown") {
+    throw new Error(`--md-out requires --format markdown, got "${format}"`);
+  }
+  const root = await requireRepoRoot();
+  const result = await buildChangelog(root, { range });
+  if (format === "json") {
+    writeOut(formatChangelogJson(result) + "\n");
+  } else {
+    const md = formatChangelogMarkdown(root, result, { includeUnknown });
+    if (mdOut !== undefined) {
+      writeFileSync(mdOut, md + "\n");
+      writeOut(`changelog written: ${mdOut} (${result.summary.total} commit(s), range ${result.range})\n`);
+    } else {
+      writeOut(md + "\n");
+    }
   }
   return 0;
 }

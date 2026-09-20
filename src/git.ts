@@ -80,3 +80,53 @@ export async function revListRange(cwd: string, range: string): Promise<string[]
     .filter((l) => l.length > 0)
     .reverse();
 }
+
+export interface GitLogEntry {
+  sha: string;
+  author: string;
+  /** ISO 8601 author date (%aI). */
+  date: string;
+  subject: string;
+  body: string;
+}
+
+/**
+ * Structured log entries for the given revision arguments (a range, -n limits,
+ * etc.), oldest first. Fields are NUL-separated and records RS-separated
+ * (%x1e) so multi-line bodies survive; git forbids NUL in commit messages,
+ * making the split unambiguous. Null when git log fails (bad range, no HEAD).
+ */
+export async function logEntries(cwd: string, revArgs: string[]): Promise<GitLogEntry[] | null> {
+  const r = await git(
+    ["log", "--format=%H%x00%an%x00%aI%x00%s%x00%b%x1e", ...revArgs],
+    { cwd },
+  );
+  if (r.code !== 0) return null;
+  const entries: GitLogEntry[] = [];
+  for (const record of r.stdout.split("\x1e")) {
+    const fields = record.split("\x00");
+    if (fields.length < 5) continue;
+    const [sha, author, date, subject, body] = fields;
+    if (!sha || sha.trim().length !== 40) continue;
+    entries.push({
+      sha: sha.trim().toLowerCase(),
+      author: (author ?? "").trim(),
+      date: (date ?? "").trim(),
+      subject: (subject ?? "").replace(/\n$/, "").trim(),
+      body: (body ?? "").replace(/\n$/, ""),
+    });
+  }
+  entries.reverse();
+  return entries;
+}
+
+/**
+ * Most recent tag reachable from HEAD (`git describe --abbrev=0 --tags`;
+ * --tags so lightweight tags count too), or null when there is none.
+ */
+export async function latestTag(cwd: string): Promise<string | null> {
+  const r = await git(["describe", "--abbrev=0", "--tags"], { cwd });
+  if (r.code !== 0) return null;
+  const tag = r.stdout.trim();
+  return tag.length > 0 ? tag : null;
+}

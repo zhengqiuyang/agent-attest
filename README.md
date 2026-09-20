@@ -30,6 +30,7 @@ The surrounding ecosystem watches but does not gate:
 2. **Verify** — `agent-attest verify` checks the signature, the subject-to-filename binding, and history membership. `--recheck` re-runs the recorded verification command so a "claimed" result that lies gets caught.
 3. **Gate** — `agent-attest gate` is the teeth: any commit touching a protected path without a valid, passing attestation fails CI. The override trailer exists but is never silent.
 4. **Report** — `agent-attest report` produces the compliance inventory (markdown for humans, JSON for GRC tooling).
+5. **Changelog** — `agent-attest changelog` turns git history JOINed with attestations into deterministic release notes: who made each commit (agent vs human), whether the agent's tests passed, and what remains unattested.
 
 ## Install
 
@@ -165,6 +166,8 @@ agent-attest verify   [--commit <sha>] [--recheck]
 agent-attest gate     [--range <base>..<head> | --commits <file> [--files <map.json>]]
                       [--recheck] [--format console|json|github]
 agent-attest report   [--format markdown|json]
+agent-attest changelog [--range <base>..<head>] [--format markdown|json]
+                      [--md-out <file>] [--include-unknown]
 ```
 
 Global exit codes: **0** pass · **1** findings / invalid attestations · **2** usage or config error.
@@ -174,6 +177,31 @@ Notes:
 - `create` executes `--verification` in the repo root and records the real exit code (source `"executed"`). A failed verification still writes the attestation — the record is the point — and prints a warning; the gate will block that commit. `--verification-passed true|false` skips execution and records a claim (source `"claimed"`).
 - `verify` checks every `.agent-attest/attestations/*.attestation.json`: digest, signature, subject-filename binding, history membership.
 - `gate` fails (exit 1) when a commit touches a protected path with no attestation, an invalid one, or one whose recorded verification failed. Commits that touch no protected path are ignored. Exit 2 means config/usage problems, never "findings".
+
+## Deterministic changelog with attestation provenance
+
+`agent-attest changelog` builds release notes from git history **joined to the signed attestations** — attribution trailers alone are a 10-line git-cliff config; the unowned part is chaining every entry to test evidence. Each commit is classified **agent** (attestation exists: agent name, `tests: passed|FAILED|unverified`, `source: claimed`, `signature: INVALID` reported, never assumed), **human** (no attestation, no agent trailer), or **unknown** (agent trailer without an attestation — always listed under a warning heading; `--include-unknown` drops only the warning). Entries group by conventional-commit prefix (`feat!`/`feat` → Features, `fix` → Fixes, rest → Changes), oldest first, and the default range is the most recent tag (`git describe --abbrev=0 --tags`)..HEAD, or the last 30 commits when no tag exists. Fully deterministic — no LLM, no network, no timestamps — and `--format json` emits the full entry objects for tooling.
+
+```markdown
+# Changelog — repo
+
+Range: v1.0.0..HEAD — 4 commits: 2 agent (50% with passing-test attestations), 1 human, 1 unknown/unattested-agent
+attestation coverage: 67% of agent commits, 50% of all commits
+
+## Features
+- feat: add session tokens [agent: claude-code, tests: passed]
+
+## Fixes
+- fix: validate token expiry [agent: claude-code, tests: FAILED]
+
+## Changes
+- chore: update docs
+
+## Unattested agent commits
+
+WARNING: these commits carry agent trailers but no signed attestation — run `agent-attest create` for them (shown always; --include-unknown suppresses this warning):
+- feat: unattended drift (9d7a978) — Co-Authored-By: Claude <noreply@anthropic.com>
+```
 
 ## Gate configuration — `agent-attest.yaml`
 
@@ -266,6 +294,7 @@ src/gate.ts              config, override trailer, commit sources, gate + format
 src/git.ts               execFile-based git plumbing (Windows-safe, read-only)
 src/glob.ts              protected-path matcher
 src/report.ts            compliance inventory
+src/changelog.ts         deterministic changelog (git history joined with attestations)
 src/cli.ts               argument parsing, commands, exit codes
 ```
 
