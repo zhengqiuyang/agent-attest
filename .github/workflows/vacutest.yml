@@ -1,0 +1,19 @@
+name: vacutest
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  vacutest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: vacutest — guard against vacuous tests (dogfooded)
+        run: |
+          git clone --depth 1 https://github.com/zhengqiuyang/vacutest "$RUNNER_TEMP/vacutest"
+          cd "$RUNNER_TEMP/vacutest" && npm ci && npm run build
+          cd "$GITHUB_WORKSPACE"
+          node "$RUNNER_TEMP/vacutest/dist/src/cli.js" scan src/test

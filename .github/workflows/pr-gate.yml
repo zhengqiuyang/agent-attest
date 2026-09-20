@@ -1,0 +1,21 @@
+name: agent-pr-gate
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: zhengqiuyang/agent-pr-gate
+          path: pr-gate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+        working-directory: pr-gate
+      - name: gate (deterministic verification for agent-authored PRs)
+        run: node pr-gate/dist/src/cli.js check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

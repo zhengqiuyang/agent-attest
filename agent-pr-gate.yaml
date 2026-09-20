@@ -1,0 +1,7 @@
+# agent-pr-gate config — dogfooded on this repo.
+# Scope policies fall back to built-in defaults (deny .github/workflows/**, CODEOWNERS, gate config).
+attest:
+  testChecks: [test]   # check-run name substrings that must exist green on the head SHA
+claims:
+  verify: true
+  onMismatch: warn
