@@ -10,7 +10,7 @@ jobs:
         with:
           repository: zhengqiuyang/agent-pr-gate
           path: pr-gate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: npm ci && npm run build
