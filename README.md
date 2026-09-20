@@ -50,8 +50,8 @@ agent-attest keygen
 # -> .agent-attest/keys/private.pem  (0600, gitignored — NEVER commit)
 # -> .agent-attest/keys/public.pem   (commit this so CI can verify)
 
-# commit the public key
-git add .agent-attest/keys/public.pem .gitignore && git commit -m "chore: agent-attest signing key"
+# commit the public key (-f: the keys dir is gitignored, so a plain add is refused)
+git add -f .agent-attest/keys/public.pem .gitignore && git commit -m "chore: agent-attest signing key"
 
 # after a headless agent run produces commit <sha>:
 agent-attest create \

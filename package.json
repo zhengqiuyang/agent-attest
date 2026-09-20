@@ -9,7 +9,7 @@
     "type": "git",
     "url": "git+https://github.com/zhengqiuyang/agent-attest.git"
   },
-  "bugs": "https://github.com/agent-attest/agent-attest/issues",
+  "bugs": "https://github.com/zhengqiuyang/agent-attest/issues",
   "keywords": [
     "ai-agents",
     "security",
